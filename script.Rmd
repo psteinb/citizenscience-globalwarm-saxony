@@ -1,0 +1,58 @@
+---
+title: "Global Warming in Saxony"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: cosmo
+        highlight: tango
+output_options: "self_contained"
+---
+
+To demonstrate the expressiveness and use of some bits and pieces of tidyverse, I'd like to reproduce the following graphic:
+[this](https://twitter.com/MetOffice_Sci/status/1266361148527370242?s=20) posted of the UK MET service on May 29, 2020, on twitter. Out goal will be to try and reproduce it.
+
+
+# First look into the dataset
+
+```{r load_data}
+library(dplyr, warn.conflicts=FALSE)
+
+library(readr)
+
+df = read.csv("saxony-monthly-temperature.csv")
+glimpse(df)
+```
+
+## Range of datasets
+
+```{r maxmin2_recording}
+message(paste("recording started",
+           min(df$MESS_DATUM_BEGINN),
+           "and ended",
+           max(df$MESS_DATUM_ENDE)
+           )
+           )
+```
+
+## let's tidy up a bit
+
+```{r tidyNAs}
+oldcnt = nrow(df)
+df = df %>% 
+     select(STATIONS_ID,MESS_DATUM_BEGINN,MO_TT,name) %>%
+     filter(! is.na(MO_TT))
+
+newcnt = nrow(df)
+message(paste("removing NAs:",oldcnt,newcnt))
+```
+
+## let's tidy up a bit
+
+```{r tidydate}
+library(lubridate, warn.conflicts=FALSE)
+library(tidyr)
+
+df = df %>% ...
+     
+```

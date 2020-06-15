@@ -18,27 +18,36 @@ download_station = function(sid, stations){
 
   cat(':: selecting',sid,'(',station_name,')','\n')
   station_link = selectDWD(id=sid, res='monthly', var='kl', per='historical')
+  dummy = data.frame(STATIONS_ID=integer(),
+                       MESS_DATUM_BEGINN=integer(),
+                       MESS_DATUM_ENDE=integer(),
+                       MO_TT=double(),
+                       MO_TX=double(),
+                       MO_TN=double()
+                     )
 
-  station_data = tryCatch({dataDWD(station_link, progbar=T,read=T)},
-                          warning = function(w){ cat(paste('something fishy with',sid, station_name,'\n')); },
-                          error = function(e){ print(paste('unable to download',sid,station_name,e,'\n'));return(NA) },
-                          finally = { cat('>> ',sid, 'downloaded successfully','\n') })
+  station_df = tryCatch({dataDWD(station_link, progbar=T,read=T)},
+                          warning = function(w){ cat(paste('WARNING something fishy with',sid, station_name,'\n',w,'\n'));return(dummy) },
+                          error = function(e){ cat(paste('ERROR unable to download',sid,station_name,e,'\n'));return(dummy) },
+                          finally = { cat(paste('SUCCESS ',sid, 'downloaded successfully','\n')) }
+                          )
 
-  if(is.null(station_data) || is.na(station_data) == T){
-    cat('!!',sid,'failed\n')
-    return(station_data)
-  }
+  ## if(is.null(station_df) || is.na(station_df) == T){
+  ##   cat('!!',sid,'failed\n')
+
+  ##   return(dummy)
+  ## }
 
   #for an explanation of column names see
   #https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/monthly/kl/historical/DESCRIPTION_obsgermany_climate_monthly_kl_historical_en.pdf
-  rdf = station_data %>%
+  rdf = station_df %>%
     select(STATIONS_ID,MESS_DATUM_BEGINN,MESS_DATUM_ENDE,MO_TT,MO_TX,MO_TN) %>%
     mutate(STATIONS_ID = as.integer(STATIONS_ID)) %>%
     as_tibble()
     ## left_join(station_info, by = c("STATIONS_ID"="station_id")) %>%
 
 
-  cat(":: obtained","\t",station_info$name,'\n')
+  cat(paste(":: obtained",station_info$name,"with",nrow(rdf),'rows\n'))
   cat(typeof(rdf))
   return(rdf)
 }

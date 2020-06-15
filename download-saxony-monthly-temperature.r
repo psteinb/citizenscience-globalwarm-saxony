@@ -33,14 +33,14 @@ message('>> merging downloaded datasets')
 df = bind_rows(dflist)
 
 message(">> downloaded from bind rows")
-message("min/max date_start/end ", min(stations$date_start)," ",max(stations$date_end))
+message("min/max date_start/end ", min(df$date_start)," ",max(df$date_end))
 
 
 df = df %>%
   left_join(stations, by = c("STATIONS_ID"="station_id"))
 
 message(">> final dataset about to be store to disk")
-message("min/max date_start/end ", min(stations$date_start)," ",max(stations$date_end))
+message("min/max date_start/end ", min(df$date_start)," ",max(df$date_end))
 
 ofile = 'saxony-monthly-temperature.csv'
 write_csv(df,ofile)
