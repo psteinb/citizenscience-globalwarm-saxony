@@ -4,4 +4,4 @@ Vizualisation of the Monthly Temperature Variation in Saxony, Germany, motivatie
 
 ## License
 
-See [LICENSE](./LICENSE.md) for this.
+See [LICENSE](./LICENSE.md) for this. The license integration was realized with [REUSE](https://reuse.software/tutorial/).

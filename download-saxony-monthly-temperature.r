@@ -16,20 +16,32 @@ library(dplyr)
 
 source("rdwd_tools.r")
 
-available_stations = read_csv(
+stations = read_csv(
   args[1],
-  col_names=c('station_id','date_start','date_end','geo_lon','geo_lat','height','name','state')) %>%
+  col_names=c('station_id','date_start','date_end','geo_lon','geo_lat'
+             ,'height','name','state')) %>%
   mutate(station_id = as.integer(station_id))
 
-dflist = lapply(available_stations$station_id,
+message("min/max date_start/end ", min(stations$date_start)," ",max(stations$date_end))
+
+dflist = lapply(stations$station_id,
                 download_station,
-                stations=available_stations)
+                stations=stations)
 
-message('merging downloaded datasets')
+message('>> merging downloaded datasets')
 
-df = bind_rows(dflist) %>%
-  left_join(available_stations, by = c("STATIONS_ID"="station_id"))
+df = bind_rows(dflist)
+
+message(">> downloaded from bind rows")
+message("min/max date_start/end ", min(stations$date_start)," ",max(stations$date_end))
+
+
+df = df %>%
+  left_join(stations, by = c("STATIONS_ID"="station_id"))
+
+message(">> final dataset about to be store to disk")
+message("min/max date_start/end ", min(stations$date_start)," ",max(stations$date_end))
 
 ofile = 'saxony-monthly-temperature.csv'
 write_csv(df,ofile)
-message('data written to ',ofile)
+message('>> data written to ',ofile)
