@@ -1,5 +1,5 @@
 ---
-title: "Global Warming in Saxony"
+title: "Global Warming in Saxony?"
 output:
     html_document:
         toc: true
@@ -17,20 +17,32 @@ To demonstrate the expressiveness and use of some bits and pieces of tidyverse, 
 
 ```{r load_data}
 library(dplyr, warn.conflicts=FALSE)
-
+library(lubridate, warn.conflicts=FALSE)
 library(readr)
+library(tidyr)
 
 df = read.csv("saxony-monthly-temperature.csv")
 glimpse(df)
+```
+## create columns for year and month
+
+```{r tidydate}
+library(tidyr)
+
+df = df %>% 
+     mutate(date=ymd_hms(MESS_DATUM)) %>% 
+     mutate(yr=as.integer(year(date)), mo=as.integer(month(date)))
+glimpse(df)
+     
 ```
 
 ## Range of datasets
 
 ```{r maxmin2_recording}
 message(paste("recording started",
-           min(df$MESS_DATUM_BEGINN),
+           min(date(df$MESS_DATUM)),
            "and ended",
-           max(df$MESS_DATUM_ENDE)
+           max(date(df$MESS_DATUM))
            )
            )
 ```
@@ -40,19 +52,123 @@ message(paste("recording started",
 ```{r tidyNAs}
 oldcnt = nrow(df)
 df = df %>% 
-     select(STATIONS_ID,MESS_DATUM_BEGINN,MO_TT,name) %>%
-     filter(! is.na(MO_TT))
+     filter(! is.na(MO_TT)) %>% 
+     select(STATIONS_ID,MESS_DATUM,name,mo,yr,MO_TT)
+     #excludes only rows
 
 newcnt = nrow(df)
 message(paste("removing NAs:",oldcnt,newcnt))
 ```
 
-## let's tidy up a bit
+## which stations recorded before 1960
 
-```{r tidydate}
-library(lubridate, warn.conflicts=FALSE)
+```{r longstations}
 library(tidyr)
 
-df = df %>% ...
+longstations = df %>% 
+     filter(yr < 1960 | yr > 1990) %>%
+     distinct(name)
+     ## select(name,yr) %>%
+     ## group_by(name,yr) %>%
+     ## summarize(minyr = min(yr), maxyr=max(yr))
      
+message("found ",length(longstations$name)," / ", length(unique(df$name)),
+        " stations that recorded outside of reference period")
+
+df = df %>% filter(name %in% longstations$name)
+message("using ", length(unique(df$name))," stations (",length(unique(df$STATIONS_ID)),")")
+     
+```
+
+## calculate the average temperature within 1961-1990
+
+We can calculate the median monthly temperature for all weather stations.
+
+```{r global_reference}
+library(tidyr)
+
+globdf = df %>% 
+     filter(yr > 1960 & yr < 1991) %>%
+     group_by(mo) %>% 
+     summarize(medTT = median(MO_TT))
+glimpse(globdf)
+```
+
+We can calculate the reference median monthly temperature for each weather station.
+
+```{r per_station_ref}
+statdf = df %>% 
+     filter(yr > 1960 & yr < 1991) %>%
+     group_by(mo,STATIONS_ID) %>% 
+     summarize(medTT = median(MO_TT), 
+     name=unique(name))
+
+statdf %>% filter(STATIONS_ID == 169)
+message(paste("using",length(unique(statdf$STATIONS_ID)),"stations by id and",length(unique(statdf$name))), " by name")
+
+if( is.na(statdf$medTT) ){
+ message("WARNING, reference temperatures contain NA values")
+}
+```
+
+# focussing on the annual deviation
+
+First, we limit the dataset to those stations that yield a reference measurement.
+
+```{r only_stations_from_ref}
+
+df = df %>% filter( STATIONS_ID %in% statdf$STATIONS_ID | name %in% statdf$name)
+message(paste("using",length(unique(df$STATIONS_ID)),"stations by id and",length(unique(df$name))), " by name")
+
+```
+
+Calculate the annual deviation from the reference temperature
+
+```{r create_diff_to_ref}
+
+df = df %>% 
+     left_join(statdf %>% select(STATIONS_ID, mo, medTT), by=c("STATIONS_ID","mo")) %>% 
+     mutate(MO_TT_delta = MO_TT - medTT)
+glimpse(df %>% filter(STATIONS_ID == 169))
+
+```
+
+## calculate the median of all deviations
+
+```{r diff_to_ref_peryr}
+
+devpyr = df %>% 
+     group_by(yr,mo) %>% 
+     summarize(med_MO_TT_diff = median(MO_TT_delta))
+     
+glimpse(devpyr)
+
+```
+
+# Let's plot!
+
+```{r plot_start_end, fig.width = 10}
+library(ggplot2)
+
+firstyr = min(devpyr$yr)
+lastyr = max(devpyr$yr)
+
+first = ggplot(devpyr %>% filter(yr == firstyr),aes(x=mo,y=med_MO_TT_diff))
+first = first + geom_line(color="red",size=2)
+first = first + geom_point(color="red",size=4)
+first = first + xlab("Month")
+first = first + ggtitle(paste(firstyr,"median difference of monthly avg temperature (1961-1990)"))
+first = first + ylab("Median(Temp(Monthly Avg) - Reference) / (Degree Celius)")
+first = first + scale_x_continuous(breaks=seq(1,12,1))
+
+first
+
+last = ggplot(devpyr %>% filter(yr == lastyr),aes(x=mo,y=med_MO_TT_diff))
+last = last + geom_line(color="red",size=2)
+last = last + geom_point(color="red",size=4)
+last = last + xlab("Month")
+last = last + ggtitle(paste(lastyr,"median difference of monthly avg temperature (1961-1990)"))
+last = last + ylab("Median(Temp(Monthly Avg) - Reference) / (Degree Celius)")
+
+last
 ```
