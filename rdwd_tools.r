@@ -17,7 +17,7 @@ download_station = function(sid, stations){
   station_name = station_info$name
 
   cat(':: selecting',sid,'(',station_name,')','\n')
-  station_link = selectDWD(id=sid, res='monthly', var='kl', per='historical')
+  station_link = selectDWD(id=sid, res='monthly', var='kl', per='historical', current=T)
   dummy = data.frame(STATIONS_ID=integer(),
                        MESS_DATUM_BEGINN=integer(),
                        MESS_DATUM_ENDE=integer(),
@@ -41,9 +41,9 @@ download_station = function(sid, stations){
   #for an explanation of column names see
   #https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/monthly/kl/historical/DESCRIPTION_obsgermany_climate_monthly_kl_historical_en.pdf
   rdf = station_df %>%
-    select(STATIONS_ID,MESS_DATUM_BEGINN,MESS_DATUM_ENDE,MO_TT,MO_TX,MO_TN) %>%
-    mutate(STATIONS_ID = as.integer(STATIONS_ID)) %>%
-    as_tibble()
+    as_tibble() %>%
+    select(STATIONS_ID,MESS_DATUM,MO_TT,MO_TX,MO_TN) %>%
+    mutate(STATIONS_ID = as.integer(STATIONS_ID))
     ## left_join(station_info, by = c("STATIONS_ID"="station_id")) %>%
 
 
