@@ -21,18 +21,19 @@ library(lubridate, warn.conflicts=FALSE)
 library(readr)
 library(tidyr)
 
-df = read.csv("saxony-monthly-temperature.csv")
-glimpse(df)
+rawdf = read.csv("saxony-monthly-temperature.csv")
+glimpse(rawdf)
 ```
 ## create columns for year and month
 
 ```{r tidydate}
 library(tidyr)
 
-df = df %>% 
+rawdf = rawdf %>% 
      mutate(date=ymd_hms(MESS_DATUM)) %>% 
-     mutate(yr=as.integer(year(date)), mo=as.integer(month(date)))
-glimpse(df)
+     mutate(yr=as.integer(year(date)), mo=as.integer(month(date)))%>% 
+     select(STATIONS_ID,MESS_DATUM,name,mo,yr,MO_TT)
+glimpse(rawdf)
      
 ```
 
@@ -40,59 +41,73 @@ glimpse(df)
 
 ```{r maxmin2_recording}
 message(paste("recording started",
-           min(date(df$MESS_DATUM)),
+           min(date(rawdf$MESS_DATUM)),
            "and ended",
-           max(date(df$MESS_DATUM))
+           max(date(rawdf$MESS_DATUM))
            )
            )
 ```
 
-## let's tidy up a bit
-
-```{r tidyNAs}
-oldcnt = nrow(df)
-df = df %>% 
-     filter(! is.na(MO_TT)) %>% 
-     select(STATIONS_ID,MESS_DATUM,name,mo,yr,MO_TT)
-     #excludes only rows
-
-newcnt = nrow(df)
-message(paste("removing NAs:",oldcnt,newcnt))
-```
-
-## which stations recorded before 1960
+## which stations recorded before 1960 or after 1990
 
 ```{r longstations}
 library(tidyr)
 
-longstations = df %>% 
-     filter(yr < 1960 | yr > 1990) %>%
-     distinct(name)
-     ## select(name,yr) %>%
-     ## group_by(name,yr) %>%
-     ## summarize(minyr = min(yr), maxyr=max(yr))
-     
-message("found ",length(longstations$name)," / ", length(unique(df$name)),
-        " stations that recorded outside of reference period")
+refdf = rawdf %>% 
+    filter(yr > 1959 & yr < 1991)
 
-df = df %>% filter(name %in% longstations$name)
+longstations = refdf %>%
+     distinct(name)
+     
+message("found ",length(longstations$name)," / ", length(unique(rawdf$name)),
+        " stations that recorded in of reference period")
+
+df = rawdf %>% filter(name %in% longstations$name)
 message("using ", length(unique(df$name))," stations (",length(unique(df$STATIONS_ID)),")")
      
 ```
 
-## calculate the average temperature within 1961-1990
 
-We can calculate the median monthly temperature for all weather stations.
+## let's tidy up a bit
 
-```{r global_reference}
-library(tidyr)
+```{r tidyNAs}
+library(knitr)
 
-globdf = df %>% 
-     filter(yr > 1960 & yr < 1991) %>%
-     group_by(mo) %>% 
-     summarize(medTT = median(MO_TT))
-glimpse(globdf)
+rawnas = df %>% filter(is.na(MO_TT))
+     
+summna = df %>% filter(is.na(MO_TT)) %>%
+            group_by(STATIONS_ID) %>%
+            summarize(cnt = n()) %>%
+            mutate( maxposs = as.integer(12*length(unique(refdf$yr))),
+            naratio = cnt/maxposs)
+            
+#kable(summna)
+
+message(paste("stations with NAs:",length(unique(rawnas$STATIONS_ID)),"/",length(unique(df$STATIONS_ID))))
+message(paste("stations with less than 25% NAs:",summna %>% filter(naratio < .25) %>% nrow()))
+
+todiscard = summna %>% filter(naratio > .25)
+df = df %>% filter( ! (STATIONS_ID %in% todiscard$STATIONS_ID) )
+
+kable(df %>% filter(STATIONS_ID == 965, yr > 1978 & yr<1981))
+
+oldcnt = df %>% filter( is.na(MO_TT) ) %>% nrow()
+df = df %>% 
+     group_by(STATIONS_ID,mo) %>%
+     fill(MO_TT, .direction="downup") %>%
+     ungroup()
+     #filter(! is.na(MO_TT)) 
+     
+kable(df %>% filter(STATIONS_ID == 965, yr > 1978 & yr<1981))
+
+newcnt = df %>% filter( is.na(MO_TT) ) %>% nrow()
+message(paste("fixing NAs:",oldcnt,newcnt))
+
+glimpse(df)
 ```
+
+
+## calculate the average temperature within 1961-1990
 
 We can calculate the reference median monthly temperature for each weather station.
 
@@ -103,11 +118,13 @@ statdf = df %>%
      summarize(medTT = median(MO_TT), 
      name=unique(name))
 
-statdf %>% filter(STATIONS_ID == 169)
 message(paste("using",length(unique(statdf$STATIONS_ID)),"stations by id and",length(unique(statdf$name))), " by name")
 
-if( is.na(statdf$medTT) ){
- message("WARNING, reference temperatures contain NA values")
+if( T %in% is.na(statdf$medTT)) {
+ message(paste("WARNING, reference temperatures contain NA values, original contained",df %>% filter(is.na(MO_TT)) %>% nrow()))
+ cat(paste(is.na(statdf$medTT)))
+} else {
+kable(statdf %>% filter(STATIONS_ID == 840) )
 }
 ```
 
@@ -120,16 +137,26 @@ First, we limit the dataset to those stations that yield a reference measurement
 df = df %>% filter( STATIONS_ID %in% statdf$STATIONS_ID | name %in% statdf$name)
 message(paste("using",length(unique(df$STATIONS_ID)),"stations by id and",length(unique(df$name))), " by name")
 
+if( T %in% is.na(df$MO_TT)) {
+ message(paste("WARNING, reference temperatures contain NA values, original contained",df %>% filter(is.na(MO_TT)) %>% nrow()))
+ cat(paste(is.na(df$MO_TT)))
+}
 ```
 
 Calculate the annual deviation from the reference temperature
 
 ```{r create_diff_to_ref}
-
+olddf = df
+small = statdf %>% select(STATIONS_ID, mo, medTT)
 df = df %>% 
-     left_join(statdf %>% select(STATIONS_ID, mo, medTT), by=c("STATIONS_ID","mo")) %>% 
+     inner_join(small, by=c("STATIONS_ID","mo")) %>% 
      mutate(MO_TT_delta = MO_TT - medTT)
-glimpse(df %>% filter(STATIONS_ID == 169))
+
+if( T %in% is.na(df$MO_TT_delta)) {
+ message(paste("WARNING, NA values found"))
+ kable(df %>% filter(is.na(MO_TT_delta)))
+ kable(df %>% filter(STATIONS_ID == 840))
+}
 
 ```
 
@@ -141,7 +168,7 @@ devpyr = df %>%
      group_by(yr,mo) %>% 
      summarize(med_MO_TT_diff = median(MO_TT_delta))
      
-glimpse(devpyr)
+glimpse(devpyr %>% filter(yr == 2019))
 
 ```
 
@@ -172,3 +199,32 @@ last = last + ylab("Median(Temp(Monthly Avg) - Reference) / (Degree Celius)")
 
 last
 ```
+
+# Let's animate
+
+Taking the years since 2000 first:
+
+```{r anim_small, fig.width = 10}
+library(gganimate)
+
+finaldf = devpyr %>% filter(yr > 2000)
+
+plot = ggplot(finaldf,aes(x=mo,y=med_MO_TT_diff))
+plot = plot + geom_line(color="red",size=2)
+plot = plot + geom_point(color="red",size=4)
+plot = plot + xlab("Month")
+plot = plot + ggtitle("{frame_time}: median difference of monthly avg temperature (1961-1990)")
+plot = plot + ylab("Median(Temp(Monthly Avg) - Reference) / (Degree Celius)")
+
+anim = plot + transition_time(yr) + ease_aes('linear') + enter_fade()
+
+mv = animate(anim, 
+#nframes=,
+#dev="gif",
+               fps=15,
+               renderer = gifski_renderer(),
+               width=500,
+               height=350)
+anim_save("test.gif",mv)
+```
+
